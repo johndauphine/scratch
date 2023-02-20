@@ -1,0 +1,14 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "server": "redshift-cluster-1.chhgsv48pswo.us-east-1.redshift.amazonaws.com",
+            "port": 5439,
+            "driver": "Redshift Driver (Dedicated ver)",
+            "name": "Training",
+            "database": "stackoverflow",
+            "username": "awsuser",
+            "password": "Bluemars1"
+        }
+    ]
+}
