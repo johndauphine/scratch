@@ -14,7 +14,7 @@ db: List[User] = [
         roles=[Role.admin,Role.user]
         ),
     User(
-        id=UUID("ea438813-5340-405d-9191-b7da9b8e0c9c"),
+        id=UUID("589872f7-4f12-4d6b-9c4f-df9fda2be594"),
         first_name="Constance",
         last_name="Williams",
         gender=Gender.female,
