@@ -2,6 +2,7 @@ from typing import List
 from fastapi import FastAPI,HTTPException
 from models import User, Gender, Role,UserUpdateRequest
 from uuid import uuid4,UUID
+import uvicorn
 
 app = FastAPI()
 
@@ -25,7 +26,7 @@ db: List[User] = [
 
 @app.get("/")
 async def root():
-    return {"Hello":"John"} 
+    return {"message":"Hi, John"} 
 
 @app.get("/api/v1/users")
 async def fetch_users():
@@ -64,3 +65,9 @@ async def update_user(user_update: UserUpdateRequest,user_id: UUID):
         status_code=404,
         detail= f"user with id: {user_id} does not exist"
     ) 
+
+if __name__=="__main__":
+    try:
+        uvicorn.run("main:app",host="0.0.0.0", port=8000)
+    except Exception as exc:
+        print(exc)
