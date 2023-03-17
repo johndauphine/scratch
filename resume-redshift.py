@@ -35,7 +35,7 @@ def main():
         response = redshift.resume_cluster(ClusterIdentifier=cluster_identifier)
 
         # Print the API response
-        return format_response(200,response)
+        return format_response(200,str(response))
     except Exception as exc:
         logger.error('Unhandled exception', exc_info=True )
         return format_response(400,str(exc))
