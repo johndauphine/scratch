@@ -20,9 +20,7 @@ def pause(cluster_identifier):
         logger.error('Unhandled exception', exc_info=True )
         return format_response(400,str(exc))
     
-def resize(cluster_identifier,
-            new_node_type ,
-            new_node_count ):
+def resize(cluster_identifier,new_node_type ,new_node_count ):
     # Define the Redshift cluster identifier and the new node type and count
 
 

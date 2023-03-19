@@ -17,7 +17,7 @@ async def pause_redshift_cluster(cluster_identifier):
 
 @app.get("/redshift/api/v1/{cluster_identifier}/resume")
 async def resume_redshift_cluster(cluster_identifier):
-    return resume.resume(cluster_identifier=cluster_identifier)
+    return resume(cluster_identifier=cluster_identifier)
 
 
 @app.get("/datetime")
