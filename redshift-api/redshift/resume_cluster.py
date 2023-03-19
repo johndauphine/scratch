@@ -1,26 +1,15 @@
 import json
 import logging
+from redshift.common import get_ssm_secret,format_response
 
 import boto3
 
-def get_ssm_secret(parameter_name):
-    ssm = boto3.client("ssm", region_name='us-east-1')
-    secret =  ssm.get_parameter( Name=parameter_name, WithDecryption=True  )
-    value = secret.get('Parameter').get('Value')
-    del ssm
-    return value
-
-def format_response(status_code, message ):
-    
-    header = {"Content-Type": "application/json", "Accept": "application/json"}
-    format_output = {"statusCode": int(status_code), "headers": header, "body": json.dumps(str(message))}
-    
-    return format_output
 
 
-def main():
+
+def resume(cluster_identifier = 'redshift-cluster-1'):
     # Define the Redshift cluster identifier and the new node type and count
-    cluster_identifier = 'redshift-cluster-1'
+    
 
 
     #Logging
@@ -42,5 +31,5 @@ def main():
 
 
 if __name__ == "__main__":
-    return_value = main()
+    return_value = resume( cluster_identifier='redshift-cluster-1')
     print(return_value)

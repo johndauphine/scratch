@@ -26,7 +26,7 @@ db: List[User] = [
 
 @app.get("/")
 async def root():
-    return {"message":"Hi, John"} 
+    return {"message":"Hello Chase!"} 
 
 @app.get("/api/v1/users")
 async def fetch_users():
@@ -68,6 +68,6 @@ async def update_user(user_update: UserUpdateRequest,user_id: UUID):
 
 if __name__=="__main__":
     try:
-        uvicorn.run("main:app",host="0.0.0.0", port=8000)
+        uvicorn.run("main:app",host="0.0.0.0", port=8000,reload=True)
     except Exception as exc:
         print(exc)
