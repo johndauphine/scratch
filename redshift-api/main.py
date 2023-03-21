@@ -3,7 +3,7 @@ from fastapi import FastAPI,HTTPException
 import logging
 from datetime import datetime
 from redshift.cluster_operations import pause,resize,resume
-
+from redshift.models import *
 
 app = FastAPI()
 
@@ -18,6 +18,14 @@ async def pause_redshift_cluster(cluster_identifier):
 @app.get("/redshift/api/v1/{cluster_identifier}/resume")
 async def resume_redshift_cluster(cluster_identifier):
     return resume(cluster_identifier=cluster_identifier)
+
+@app.post("/redshift/api/v1/{cluster_identifier}/resize")
+async def resize_redshift_cluster(resize_info:ClusterResizeRequest, 
+                                  cluster_identifier:str):
+    return resize(cluster_identifier=cluster_identifier,
+                  new_node_count=resize_info.node_count,
+                  new_node_type=resize_info.node_type
+                  )
 
 
 @app.get("/datetime")
