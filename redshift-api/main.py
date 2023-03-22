@@ -9,7 +9,7 @@ app = FastAPI()
 
 @app.get("/")
 async def index():
-    return {"message":f"Hello, World!"}
+    return {"message":f"Welcome checkout /docs for info on using this api"}
 
 @app.get("/redshift/api/v1/{cluster_identifier}/pause")
 async def pause_redshift_cluster(cluster_identifier):
@@ -34,9 +34,7 @@ async def get_datetime():
     currentDateTimeStr = currentDateTime.strftime("%Y-%m-%d-%H-%M-%S")
     return {"message":f"Current datetime is {currentDateTimeStr}"}
 
-@app.get("/{name}")
-async def index(name):
-    return {"message":f"Hello, {name}"}
+
 
 if __name__=="__main__":
     try:
