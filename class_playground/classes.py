@@ -35,9 +35,9 @@ class Employee(Person):
 
 person1 = Person('John','Dauphine',date(1969,11,25))
 
-person2 = Person('Connie','Williams',date(1969,8,14))
+person2 = Person('Constance','Williams',date(1969,8,14))
 
 people = [person1,person2]
 
 for p in people:
-    print(p.first_name)
+    print(p)
