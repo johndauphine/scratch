@@ -2,3 +2,4 @@ __pycache__
 .vscode/
 venv/
 terraform/s3-basic/.terraform/providers/registry.terraform.io/hashicorp/aws/5.75.0/linux_amd64/terraform-provider-aws_v5.75.0_x5
+dummy_data.csv
