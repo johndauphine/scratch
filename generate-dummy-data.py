@@ -1,5 +1,6 @@
 import csv
 import random
+from datetime import datetime, timedelta
 
 # Lists of sample data
 first_names = [
@@ -34,7 +35,7 @@ last_names = [
     "Gray", "Mendoza", "Ruiz", "Hughes", "Price", "Peterson", "Powell",
     "Jenkins", "Long", "Foster", "Perry", "Ross", "Barnes", "Fisher",
     "Henderson", "Coleman", "Jenkins", "Simmons", "Patterson", "Jordan",
-    "Reynolds", "Hamilton", "Graham","Dauphine"
+    "Reynolds", "Hamilton", "Graham", "Dauphine"
 ]
 
 countries = [
@@ -46,7 +47,7 @@ countries = [
     "Poland", "Czech Republic", "Hungary", "Greece", "Turkey", "Israel",
     "Saudi Arabia", "United Arab Emirates", "Egypt", "Nigeria", "Kenya",
     "Indonesia", "Malaysia", "Philippines", "Vietnam", "Thailand",
-    "Singapore", "Argentina", "Peru", "Venezuela"
+    "Singapore", "Peru", "Venezuela"
 ]
 
 # Function to generate a random email
@@ -54,15 +55,46 @@ def generate_email(first_name, last_name):
     domains = ["example.com", "sample.org", "demo.net", "test.com"]
     return f"{first_name.lower()}.{last_name.lower()}@{random.choice(domains)}"
 
+# Function to generate a random birth date between two dates
+def random_birth_date():
+    # Set the birth date range between ages 18 and 65 as of reference date
+    start_date = datetime(1955, 1, 1)  # 65 years before reference date
+    end_date = datetime(2002, 12, 31)  # 18 years before reference date
+    delta_days = (end_date - start_date).days
+    random_days = random.randint(0, delta_days)
+    birth_date = start_date + timedelta(days=random_days)
+    return birth_date
+
+# Function to calculate age given a birth date and a reference date
+def calculate_age(birth_date, reference_date=None):
+    if reference_date is None:
+        reference_date = datetime.now()
+    age = reference_date.year - birth_date.year - (
+        (reference_date.month, reference_date.day) < (birth_date.month, birth_date.day)
+    )
+    return age
+
+# Set the reference date for age calculation (fixed date for consistency)
+reference_date = datetime(2020, 1, 1)
+
 # Generate and write data to CSV
 with open('dummy_data.csv', 'w', newline='', encoding='utf-8') as csvfile:
     writer = csv.writer(csvfile, quoting=csv.QUOTE_ALL)
     # Write header
-    writer.writerow(["ID", "FirstName", "LastName", "Age", "Email", "Country"])
-    for i in range(1, 1000001):
+    writer.writerow(["ID", "FirstName", "LastName", "BirthDate", "Age", "Email", "Country"])
+    for i in range(1, 10000001):
         first_name = random.choice(first_names)
         last_name = random.choice(last_names)
-        age = random.randint(18, 65)
+        birth_date = random_birth_date()
+        age = calculate_age(birth_date, reference_date=reference_date)
         email = generate_email(first_name, last_name)
         country = random.choice(countries)
-        writer.writerow([i, first_name, last_name, age, email, country])
+        writer.writerow([
+            i,
+            first_name,
+            last_name,
+            birth_date.strftime("%Y-%m-%d"),
+            age,
+            email,
+            country
+        ])
