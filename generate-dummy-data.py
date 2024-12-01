@@ -82,7 +82,7 @@ with open('dummy_data.csv', 'w', newline='', encoding='utf-8') as csvfile:
     writer = csv.writer(csvfile, quoting=csv.QUOTE_ALL)
     # Write header
     writer.writerow(["ID", "FirstName", "LastName", "BirthDate", "Age", "Email", "Country"])
-    for i in range(1, 10000001):
+    for i in range(1, 100001):
         first_name = random.choice(first_names)
         last_name = random.choice(last_names)
         birth_date = random_birth_date()
