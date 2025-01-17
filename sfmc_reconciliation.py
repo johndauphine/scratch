@@ -24,19 +24,21 @@ def get_athena_table_row_count_after_date(
     """
     Returns the row count of a given table from AWS Athena,
     counting only rows where 'date_column' > 'after_date'.
+
+    Logs and raises an exception if the Athena query fails,
+    including the reason from Athena's StateChangeReason.
     """
     logger = logging.getLogger(__name__)
     athena_client = boto3.client("athena", region_name=region)
 
-    # If the column is DATE or TIMESTAMP, using DATE '{after_date}' is fine.
-    # If the column is a string, you might need  WHERE {date_column} > '{after_date}'.
+    # Using CAST(... AS DATE) = DATE 'YYYY-MM-DD' for the filter
     query_string = (
         f"SELECT COUNT(*) AS total "
         f"FROM {database}.{table} "
-        f"WHERE {date_column} > DATE '{after_date}'"
+        f"WHERE CAST({date_column} AS DATE) = DATE '{after_date}'"
     )
 
-    logger.info(f"Starting Athena query for rows after {after_date} in {database}.{table}")
+    logger.info(f"Starting Athena query {query_string} for rows on {after_date} in {database}.{table}")
     response = athena_client.start_query_execution(
         QueryString=query_string,
         QueryExecutionContext={"Database": database},
@@ -48,20 +50,25 @@ def get_athena_table_row_count_after_date(
     # Poll until SUCCEEDED, FAILED, or CANCELLED
     while True:
         query_status = athena_client.get_query_execution(QueryExecutionId=query_execution_id)
-        status = query_status["QueryExecution"]["Status"]["State"]
+        status_info = query_status["QueryExecution"]["Status"]
+        status = status_info["State"]
+
         if status in ["SUCCEEDED", "FAILED", "CANCELLED"]:
             break
         time.sleep(2)
 
-    if status == "SUCCEEDED":
-        logger.info(f"Athena query succeeded for {database}.{table}. Fetching results...")
-        result_response = athena_client.get_query_results(QueryExecutionId=query_execution_id)
-        # The second row (index 1) has the actual count
-        row_count_str = result_response["ResultSet"]["Rows"][1]["Data"][0]["VarCharValue"]
-        return int(row_count_str)
-    else:
-        logger.exception(f"Athena query failed or was cancelled. Status: {status}")
-        raise Exception(f"Athena query failed or was cancelled. Status: {status}")
+    # If not succeeded, retrieve the reason for failure/cancellation
+    if status != "SUCCEEDED":
+        reason = status_info.get("StateChangeReason", "No reason provided by Athena.")
+        logger.exception(f"Athena query failed. Status: {status}, Reason: {reason}")
+        raise Exception(f"Athena query failed or was cancelled. Reason: {reason}")
+
+    logger.info(f"Athena query succeeded for {database}.{table}. Fetching results...")
+    result_response = athena_client.get_query_results(QueryExecutionId=query_execution_id)
+
+    # The first row is usually the header; the second row (index 1) has the actual count
+    row_count_str = result_response["ResultSet"]["Rows"][1]["Data"][0]["VarCharValue"]
+    return int(row_count_str)
 
 
 def move_s3_object(s3_client, source_bucket, source_key, destination_bucket, destination_key):
@@ -111,15 +118,17 @@ def upload_csv_report_to_s3(s3_client, rows, report_s3_uri):
     dest_bucket = parsed_uri.netloc
     dest_key = parsed_uri.path.lstrip("/")
 
+    # The columns in your final reconciliation CSV
     fieldnames = [
         "EventDate",
         "BusinessUnit",
         "ObjectType",
         "AthenaTable",
-        "RowCount",
+        "SFMCRowCount",
         "AthenaRowCount",
         "Difference",
-        "Status"
+        "Status",          # Match, NoMatch, or Error
+        "ErrorDescription" # store the error if Status=Error, else None
     ]
 
     output = io.StringIO()
@@ -129,7 +138,7 @@ def upload_csv_report_to_s3(s3_client, rows, report_s3_uri):
     for row in rows:
         writer.writerow(row)
 
-    csv_bytes = output.getvalue().encode("utf-8")
+    csv_bytes = output.getvalue().encode("utf-16")
 
     logger.info(f"Uploading reconciliation report to {report_s3_uri}")
     try:
@@ -145,15 +154,22 @@ def upload_csv_report_to_s3(s3_client, rows, report_s3_uri):
 
 
 def main():
+    """
+    Main script for SFMC Reconciliation with final CSV report.
+
+    Changes:
+      - Now includes 'Status' column that can be "Match", "NoMatch", or "Error".
+      - New column 'ErrorDescription' to store Athena query error or 'None' if no error.
+    """
     logger = logging.getLogger(__name__)
 
-    parser = argparse.ArgumentParser(description="SFMC Reconciliation with final CSV report")
+    parser = argparse.ArgumentParser(description="SFMC Reconciliation with Athena error reasons.")
 
     # Required arguments
     parser.add_argument("--landing-s3-uri", required=True,
-                        help="S3 URI to the CSV file to process.")
+                        help="S3 URI to the CSV file to process. E.g., s3://my-bucket/sfmc/daily-row-counts/file.csv")
     parser.add_argument("--athena-output-bucket", required=True,
-                        help="S3 bucket for Athena query results (no s3://).")
+                        help="S3 bucket (no 's3://') for Athena query results.")
     parser.add_argument("--sns-topic-arn", required=True,
                         help="SNS topic ARN for mismatch notifications.")
     parser.add_argument("--athena-date-column", required=True,
@@ -163,21 +179,21 @@ def main():
     parser.add_argument("--athena-database", required=True,
                         help="Name of the Athena database to query.")
 
+    # Optional arguments
     parser.add_argument("--region", default="us-east-1",
-                        help="AWS region for Athena / SNS (default us-east-1)")
+                        help="AWS region for Athena / SNS (default: us-east-1)")
     parser.add_argument("--threshold", type=float, default=10.0,
                         help="Percent difference threshold for mismatch.")
-
-    # Now the default pattern includes two placeholders: {business_unit} and {object}
     parser.add_argument("--athena-table-pattern", default="bronze_{business_unit}_{object}_delta",
                         help=(
-                            "Format pattern for Athena table name, e.g. 'bronze_{business_unit}_{object}_delta'. "
-                            "Placeholders '{business_unit}' and '{object}' are replaced by the CSV values."
+                            "Pattern for the Athena table name. "
+                            "Placeholders '{business_unit}' and '{object}' will be replaced by CSV values. "
+                            "Default: 'bronze_{business_unit}_{object}_delta'."
                         ))
 
     args = parser.parse_args()
 
-    # Extract arguments
+    # Extract parameters
     landing_s3_uri = args.landing_s3_uri
     athena_output_bucket = args.athena_output_bucket
     sns_topic_arn = args.sns_topic_arn
@@ -191,6 +207,7 @@ def main():
     s3_client = boto3.client("s3", region_name=region)
     sns_client = boto3.client("sns", region_name=region)
 
+    # Parse the landing S3 URI
     parsed_uri = urlparse(landing_s3_uri, allow_fragments=False)
     source_bucket = parsed_uri.netloc
     source_key = parsed_uri.path.lstrip("/")
@@ -205,8 +222,14 @@ def main():
         logger.exception(f"Could not fetch CSV from {landing_s3_uri}.")
         sys.exit(1)
 
-    csv_content = csv_obj['Body'].read().decode('utf-8')
-    logger.info("CSV file downloaded successfully.")
+    try:
+        csv_content = csv_obj["Body"].read().decode("utf-16")
+    except UnicodeDecodeError:
+        # If you suspect another encoding, handle it here or log the error
+        logger.exception("Failed to decode CSV as UTF-16. Check file encoding.")
+        sys.exit(1)
+
+    logger.info("CSV file downloaded and decoded successfully.")
 
     mismatches = []
     report_rows = []
@@ -221,12 +244,16 @@ def main():
         event_date_str = row.get("EventDate")
         row_count_str = row.get("RowCount", "0")
 
-        # Example special case: if business_unit == "lennar corporation", set to "lennar"
+        # Optional transformations
         if business_unit and business_unit.lower() == "lennar corporation":
             business_unit = "lennar"
 
+        if business_unit and business_unit.lower() == "california coastal":
+            business_unit = "cal coastal"
+
+        # Convert row_count to int
         try:
-            expected_row_count = int(row_count_str)
+            sfmc_row_count = int(row_count_str)
         except ValueError:
             logger.error(f"Invalid RowCount '{row_count_str}' for row {number} (MID={mid}). Skipping.")
             continue
@@ -235,10 +262,27 @@ def main():
             logger.error(f"No EventDate found in row {number} (MID={mid}). Skipping.")
             continue
 
-        # Build table name from the pattern, using BOTH business_unit and object_type
-        # We sanitize them first
-        sanitized_bu = (business_unit.lower().replace(" ", "_")) if business_unit else "unknown"
-        sanitized_obj = (object_type.lower().replace(" ", "_")) if object_type else "unknown"
+        # Build table name
+        sanitized_bu = (business_unit.lower().replace(" ", "").replace("-","")) if business_unit else "unknown"
+        object_dictionary ={
+            'Bounce': 'BounceEvent',
+            'Click': 'ClickEvent',
+            'Email': 'Email',
+            'ForwardedEmail': 'ForwardedEmailEvent',
+            'NotSent': 'NotSentEvent',
+            'Open': 'OpenEvent',
+            'Send': 'Send',
+            'Sent': 'SentEvent',
+            'Unsubscribe': 'UnsubEvent'
+        }
+        # Look up object type in dictionary, if not found, you might handle KeyError
+        try:
+            object_type = object_dictionary[object_type]
+        except KeyError:
+            logger.error(f"ObjectType '{object_type}' not recognized in dictionary. Skipping row {number}.")
+            continue
+
+        sanitized_obj = (object_type.lower().replace(" ", "")) if object_type else "unknown"
 
         try:
             table_name = table_pattern.format(
@@ -251,9 +295,15 @@ def main():
             )
             continue
 
-        # Query Athena
+        # Prepare placeholders for the final report row
+        row_status = None
+        error_description = None
+        athena_row_count = None
+        difference = None
+
+        # 2a. Query Athena row count
         try:
-            actual_row_count = get_athena_table_row_count_after_date(
+            athena_row_count = get_athena_table_row_count_after_date(
                 database=athena_database,
                 table=table_name,
                 date_column=date_column,
@@ -261,43 +311,57 @@ def main():
                 output_bucket=athena_output_bucket,
                 region=region
             )
-        except Exception:
+        except Exception as e:
+            # Capture the error message for the final CSV
             logger.exception(f"Athena query failed for {athena_database}.{table_name}, row {number} (MID={mid}).")
-            continue
+            row_status = "Error"
+            error_description = str(e)
 
-        difference = expected_row_count - actual_row_count
-        if expected_row_count == 0:
-            percent_diff = None
-        else:
-            percent_diff = (actual_row_count - expected_row_count) / expected_row_count * 100
+        if row_status != "Error":
+            # Calculate difference and percent diff only if no error
+            difference = sfmc_row_count - (athena_row_count or 0)
+            if sfmc_row_count == 0:
+                percent_diff = None
+            else:
+                percent_diff = (athena_row_count - sfmc_row_count) / sfmc_row_count * 100
 
-        if percent_diff is not None and abs(percent_diff) > threshold:
-            mismatches.append({
-                "number": number,
-                "mid": mid,
-                "business_unit": business_unit,
-                "object_type": object_type,
-                "database": athena_database,
-                "table": table_name,
-                "event_date": event_date_str,
-                "expected": expected_row_count,
-                "actual": actual_row_count,
-                "percent_diff": percent_diff
-            })
+            # Check mismatch threshold
+            if percent_diff is not None and abs(percent_diff) > threshold:
+                mismatches.append({
+                    "number": number,
+                    "mid": mid,
+                    "business_unit": business_unit,
+                    "object_type": object_type,
+                    "database": athena_database,
+                    "table": table_name,
+                    "event_date": event_date_str,
+                    "sfmc_row_count": sfmc_row_count,
+                    "athena_row_count": athena_row_count,
+                    "percent_diff": percent_diff
+                })
 
-        # Build report row
+            # Determine row status
+            if difference == 0:
+                row_status = "Match"
+            else:
+                row_status = "NoMatch"
+            
+            error_description = "None"
+
+        # 2b. Build final report row
         report_rows.append({
             "EventDate": event_date_str,
             "BusinessUnit": business_unit,
             "ObjectType": object_type,
             "AthenaTable": f"{athena_database}.{table_name}",
-            "RowCount": expected_row_count,
-            "AthenaRowCount": actual_row_count,
-            "Difference": difference,
-            "Status": "Match" if difference == 0 else "NoMatch"
+            "SFMCRowCount": sfmc_row_count,
+            "AthenaRowCount": athena_row_count if athena_row_count is not None else 0,
+            "Difference": difference if difference is not None else 0,
+            "Status": row_status,
+            "ErrorDescription": error_description
         })
 
-    # SNS alert if mismatches above threshold
+    # 3. SNS notification if mismatches above threshold
     if mismatches:
         logger.warning("MISMATCHES FOUND (threshold-based). Preparing SNS notification...")
         message_lines = ["MISMATCHES FOUND (above threshold):"]
@@ -309,13 +373,13 @@ def main():
                 f"ObjectType={m['object_type']}, "
                 f"DB={m['database']}, "
                 f"Table={m['table']}, "
-                f"EventDate>{m['event_date']}, "
-                f"Expected={m['expected']}, "
-                f"Actual={m['actual']}, "
+                f"EventDate={m['event_date']}, "
+                f"AthenaRowCount={m['athena_row_count']}, "
+                f"SFMCRowCount={m['sfmc_row_count']}, "
                 f"PercentDiff={m['percent_diff']:.2f}%"
             )
             message_lines.append(line)
-        
+
         message_body = "\n".join(message_lines)
         try:
             sns_client.publish(
@@ -329,11 +393,11 @@ def main():
     else:
         logger.info("No mismatches found above threshold. No SNS notification sent.")
 
-    # Upload final reconciliation report
+    # 4. Upload final CSV report to S3
     logger.info("Uploading final reconciliation report to S3...")
     upload_csv_report_to_s3(s3_client, report_rows, report_s3_uri)
 
-    # Move original CSV to processed folder
+    # 5. Move CSV file from landing to processed folder
     logger.info("Moving CSV to 'processed' folder...")
     try:
         move_s3_object(
