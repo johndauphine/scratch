@@ -3,9 +3,7 @@ import urllib.request
 import urllib.error
 
 
-def get_weather_alerts(latitude:float, longitude:float):
- 
-
+def get_weather_alert(latitude: float, longitude: float):
     # Set up the User-Agent header as required by weather.gov API
     headers = {
         'User-Agent': 'Python Script'
@@ -19,24 +17,30 @@ def get_weather_alerts(latitude:float, longitude:float):
         with urllib.request.urlopen(req) as response:
             data = json.loads(response.read().decode())
 
+        features = data.get('features', [])
+        if not features:
+            return {
+                'statusCode': 204,
+                'body': json.dumps('No weather alerts found for this location.')
+            }
 
-        record =(
-            data['features'][0]['properties']['sent'],
-            data['features'][0]['properties']['effective'],
-            data['features'][0]['properties']['onset'],
-            data['features'][0]['properties']['expires'],
-            data['features'][0]['properties']['messageType'],
-            data['features'][0]['properties']['severity'],
-            data['features'][0]['properties']['urgency'],
-            data['features'][0]['properties']['event'],
-            data['features'][0]['properties']['sender'],
-            data['features'][0]['properties']['senderName'],
-            data['features'][0]['properties']['headline'],
-            data['features'][0]['properties']['description'],
-            data['features'][0]['properties']['instruction'],
-            data['features'][0]['properties']['response']
+        props = features[0].get('properties', {})
+        record = (
+            props.get('sent'),
+            props.get('effective'),
+            props.get('onset'),
+            props.get('expires'),
+            props.get('messageType'),
+            props.get('severity'),
+            props.get('urgency'),
+            props.get('event'),
+            props.get('sender'),
+            props.get('senderName'),
+            props.get('headline'),
+            props.get('description'),
+            props.get('instruction'),
+            props.get('response')
         )
-
         return record
 
     except urllib.error.HTTPError as http_err:
@@ -44,6 +48,11 @@ def get_weather_alerts(latitude:float, longitude:float):
             'statusCode': http_err.code,
             'body': json.dumps(f'HTTP error occurred: {http_err.reason}')
         }
-        
+    except Exception as exc:
+        return {
+            'statusCode': 500,
+            'body': json.dumps(f'An unexpected error occurred: {str(exc)}')
+        }
+
 if __name__ == "__main__":
-    print(get_weather_alerts(29.5822,-95.7608))
+    print(get_weather_alert(41.8781, -87.6298))
