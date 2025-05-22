@@ -1,4 +1,4 @@
-Analyze the following code:
+
 
 # sharepoint_to_s3_lambda.py
 """
