@@ -74,8 +74,8 @@ def calculate_age(birth_date, reference_date=None):
     )
     return age
 
-# Set the reference date for age calculation (fixed date for consistency)
-reference_date = datetime(2020, 1, 1)
+# Set the reference date for age calculation (current date)
+reference_date = datetime.now()
 
 # Generate and write data to CSV
 with open('dummy_data.csv', 'w', newline='', encoding='utf-8') as csvfile:
