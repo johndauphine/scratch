@@ -56,10 +56,10 @@ def generate_email(first_name, last_name):
     return f"{first_name.lower()}.{last_name.lower()}@{random.choice(domains)}"
 
 # Function to generate a random birth date between two dates
-def random_birth_date():
+def random_birth_date(reference_date):
     # Set the birth date range between ages 18 and 65 as of reference date
-    start_date = datetime(1955, 1, 1)  # 65 years before reference date
-    end_date = datetime(2002, 12, 31)  # 18 years before reference date
+    start_date = datetime(reference_date.year - 65, reference_date.month, reference_date.day)
+    end_date = datetime(reference_date.year - 18, reference_date.month, reference_date.day)
     delta_days = (end_date - start_date).days
     random_days = random.randint(0, delta_days)
     birth_date = start_date + timedelta(days=random_days)
@@ -74,18 +74,18 @@ def calculate_age(birth_date, reference_date=None):
     )
     return age
 
-# Set the reference date for age calculation (fixed date for consistency)
-reference_date = datetime(2020, 1, 1)
+# Set the reference date for age calculation (current date)
+reference_date = datetime.now()
 
 # Generate and write data to CSV
 with open('dummy_data.csv', 'w', newline='', encoding='utf-8') as csvfile:
     writer = csv.writer(csvfile, quoting=csv.QUOTE_ALL)
     # Write header
     writer.writerow(["ID", "FirstName", "LastName", "BirthDate", "Age", "Email", "Country"])
-    for i in range(1, 100001):
+    for i in range(1, 10001):
         first_name = random.choice(first_names)
         last_name = random.choice(last_names)
-        birth_date = random_birth_date()
+        birth_date = random_birth_date(reference_date)
         age = calculate_age(birth_date, reference_date=reference_date)
         email = generate_email(first_name, last_name)
         country = random.choice(countries)
